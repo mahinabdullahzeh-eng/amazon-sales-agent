@@ -4,6 +4,51 @@ Platforma zasilana przez AI do analizy produktów Amazon i optymalizacji ofert s
 
 ---
 
+## 📥 Jak otworzyć i pobrać tę dokumentację
+
+Dokumentacja stworzona przez GitHub Copilot jest dostępna w tym repozytorium jako plik `README.md`. Możesz ją otworzyć i pobrać na kilka sposobów:
+
+### 🌐 Podgląd online (GitHub)
+Otwórz w przeglądarce — GitHub renderuje plik Markdown automatycznie:
+
+```
+https://github.com/mahinabdullahzeh-eng/amazon-sales-agent/blob/copilot/analyze-amazon-agent-functions/README.md
+```
+
+### ⬇️ Pobranie samego pliku README.md (plik tekstowy)
+Kliknij prawym przyciskiem myszy na poniższy link i wybierz „Zapisz link jako…":
+
+```
+https://raw.githubusercontent.com/mahinabdullahzeh-eng/amazon-sales-agent/copilot/analyze-amazon-agent-functions/README.md
+```
+
+Lub użyj `curl` / `wget` w terminalu:
+
+```bash
+curl -O https://raw.githubusercontent.com/mahinabdullahzeh-eng/amazon-sales-agent/copilot/analyze-amazon-agent-functions/README.md
+# albo:
+wget https://raw.githubusercontent.com/mahinabdullahzeh-eng/amazon-sales-agent/copilot/analyze-amazon-agent-functions/README.md
+```
+
+### 📦 Pobranie całego repozytorium (ZIP)
+Pobierz wszystkie pliki projektu jako archiwum ZIP:
+
+```
+https://github.com/mahinabdullahzeh-eng/amazon-sales-agent/archive/refs/heads/copilot/analyze-amazon-agent-functions.zip
+```
+
+### 🖥️ Klonowanie repozytorium (Git)
+```bash
+git clone https://github.com/mahinabdullahzeh-eng/amazon-sales-agent.git
+cd amazon-sales-agent
+git checkout copilot/analyze-amazon-agent-functions
+# Plik README.md znajdziesz w katalogu głównym projektu
+```
+
+> **Wskazówka:** Po scaleniu gałęzi do `main` dokumentacja będzie dostępna bezpośrednio pod adresem `https://github.com/mahinabdullahzeh-eng/amazon-sales-agent`.
+
+---
+
 ## Spis treści
 
 1. [Przegląd architektury](#przegląd-architektury)
