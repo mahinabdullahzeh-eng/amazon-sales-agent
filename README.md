@@ -1,292 +1,292 @@
 # Amazon Sales Intelligence Agent
 
-AI-powered Amazon product analysis and listing optimization platform. The system combines web scraping, multi-agent AI pipelines, and structured data processing to research products, analyze keywords, score opportunities, and generate SEO-optimized listing content.
+Platforma zasilana przez AI do analizy produktów Amazon i optymalizacji ofert sprzedaży. System łączy web scraping, wieloagentowe potoki AI oraz ustrukturyzowane przetwarzanie danych w celu badania produktów, analizy słów kluczowych, oceny szans sprzedażowych i generowania zoptymalizowanych pod kątem SEO treści ofert.
 
 ---
 
-## Table of Contents
+## Spis treści
 
-1. [Architecture Overview](#architecture-overview)
-2. [The Four-Agent Pipeline](#the-four-agent-pipeline)
-   - [Agent 1 – Research Agent](#agent-1--research-agent)
-   - [Agent 2 – Keyword Categorization Agent](#agent-2--keyword-categorization-agent)
-   - [Agent 3 – Scoring Agent (with Sub-Agents)](#agent-3--scoring-agent-with-sub-agents)
-   - [Agent 4 – SEO Optimization Agent](#agent-4--seo-optimization-agent)
-3. [Amazon Scraping System](#amazon-scraping-system)
-4. [Anti-Blocking System](#anti-blocking-system)
-5. [Keyword Processing Utilities](#keyword-processing-utilities)
-6. [Job Management System](#job-management-system)
-7. [API Endpoints](#api-endpoints)
-8. [Frontend Application](#frontend-application)
-9. [External APIs and Services](#external-apis-and-services)
-10. [Configuration & Environment Variables](#configuration--environment-variables)
-11. [Technology Stack](#technology-stack)
-12. [Deployment](#deployment)
+1. [Przegląd architektury](#przegląd-architektury)
+2. [Poczwórny potok agentów AI](#poczwórny-potok-agentów-ai)
+   - [Agent 1 – Agent badawczy (Research Agent)](#agent-1--agent-badawczy-research-agent)
+   - [Agent 2 – Agent kategoryzacji słów kluczowych (Keyword Agent)](#agent-2--agent-kategoryzacji-słów-kluczowych-keyword-agent)
+   - [Agent 3 – Agent scoringu (z subagentami)](#agent-3--agent-scoringu-z-subagentami)
+   - [Agent 4 – Agent optymalizacji SEO](#agent-4--agent-optymalizacji-seo)
+3. [System scrapowania Amazon](#system-scrapowania-amazon)
+4. [System anty-blokujący](#system-anty-blokujący)
+5. [Narzędzia do przetwarzania słów kluczowych](#narzędzia-do-przetwarzania-słów-kluczowych)
+6. [System zarządzania zadaniami (Job Manager)](#system-zarządzania-zadaniami-job-manager)
+7. [Endpointy API](#endpointy-api)
+8. [Aplikacja frontendowa](#aplikacja-frontendowa)
+9. [Zewnętrzne API i usługi](#zewnętrzne-api-i-usługi)
+10. [Konfiguracja i zmienne środowiskowe](#konfiguracja-i-zmienne-środowiskowe)
+11. [Stos technologiczny](#stos-technologiczny)
+12. [Wdrożenie](#wdrożenie)
 
 ---
 
-## Architecture Overview
+## Przegląd architektury
 
 ```
-CSV Files (Helium 10 Cerebro export)
+Pliki CSV (eksport z Helium 10 Cerebro)
         │
         ▼
 ┌────────────────────────────────────────────────────────────────────────────┐
-│                         FastAPI Backend                                     │
+│                         Backend FastAPI                                     │
 │                                                                              │
-│  POST /api/v1/amazon-sales-intelligence  (sync)                             │
-│  POST /api/v1/start-analysis             (async background job)             │
+│  POST /api/v1/amazon-sales-intelligence  (synchroniczny)                    │
+│  POST /api/v1/start-analysis             (asynchroniczne zadanie w tle)     │
 │  GET  /api/v1/job-status/{job_id}                                           │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                  4-AGENT AI PIPELINE                                 │   │
+│  │                  POTOK 4 AGENTÓW AI                                  │   │
 │  │                                                                       │   │
-│  │  [1] ResearchAgent   → scrape + market position + relevancy scores  │   │
+│  │  [1] ResearchAgent   → scraping + pozycja rynkowa + oceny trafności │   │
 │  │          ↓                                                            │   │
-│  │  [2] KeywordAgent    → categorize keywords (6 categories)            │   │
+│  │  [2] KeywordAgent    → kategoryzacja słów kluczowych (6 kategorii)   │   │
 │  │          ↓                                                            │   │
-│  │  [3] ScoringRunner   → intent + metrics + broad volume + variants    │   │
+│  │  [3] ScoringRunner   → intencja + metryki + wolumen + warianty       │   │
 │  │     ├─ IntentScoringSubagent                                         │   │
-│  │     ├─ MetricsSubagent (deterministic)                               │   │
+│  │     ├─ MetricsSubagent (deterministyczny)                            │   │
 │  │     ├─ BroadVolumeAgent                                              │   │
 │  │     ├─ KeywordVariantAgent                                           │   │
 │  │     ├─ RootRelevanceAgent                                            │   │
 │  │     └─ OpportunitySubagent                                           │   │
 │  │          ↓                                                            │   │
-│  │  [4] SEOOptimizationAgent → optimized title + bullets + backend kws │   │
+│  │  [4] SEOOptimizationAgent → tytuł + punktory + słowa kluczowe back  │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
-│  Storage: Redis (Upstash) or local file system                              │
+│  Magazyn danych: Redis (Upstash) lub lokalny system plików                  │
 └────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
 ┌─────────────────────────┐
-│   Next.js Frontend      │
-│   (KeywordAI Dashboard) │
+│   Frontend Next.js      │
+│   (Panel KeywordAI)     │
 └─────────────────────────┘
 ```
 
 ---
 
-## The Four-Agent Pipeline
+## Poczwórny potok agentów AI
 
-All agents are built on the **OpenAI Agents SDK** (`openai-agents>=0.2.9`) and use the `gpt-5-mini-2025-08-07` model with minimal reasoning effort for cost efficiency.
+Wszystkie agenty są zbudowane na **OpenAI Agents SDK** (`openai-agents>=0.2.9`) i używają modelu `gpt-5-mini-2025-08-07` z minimalnym wysiłkiem rozumowania dla oszczędności kosztów.
 
-### Agent 1 – Research Agent
+### Agent 1 – Agent badawczy (Research Agent)
 
-**File:** `backend/app/local_agents/research/`
+**Plik:** `backend/app/local_agents/research/`
 
-**Purpose:** Scrapes an Amazon product listing and produces structured market intelligence.
+**Cel:** Scrapuje ofertę produktu na Amazon i produkuje ustrukturyzowane dane rynkowe.
 
-**What it does:**
-1. Scrapes the target product page using multiple scrapers (Scrapy, Playwright, SERP API fallback).
-2. Scrapes competitor products listed in the uploaded CSV files (revenue and design competitors).
-3. Computes a **base relevancy score (0–10)** for each keyword from the CSV files:
-   - Formula: counts how many competitor ASINs rank in the top 10 for each keyword.
-   - Score = `(top_10_count / total_asins) × 20`, capped at 10.
-4. Applies **literal relevance** adjustment: boosts score for keywords whose tokens are found in the product title.
-5. Applies **competitor title relevance** adjustment: boosts score when many competitors use the keyword in their titles.
-6. Applies a **dynamic relevancy threshold** (3–9 depending on dataset size) to filter low-quality keywords before AI processing.
-7. Sends scraped data + slim CSV context to the `ResearchAgent` AI model for structured analysis.
+**Co robi:**
+1. Scrapuje stronę docelowego produktu za pomocą wielu scraperów (Scrapy, Playwright, fallback SERP API).
+2. Scrapuje produkty konkurentów wymienione w przesłanych plikach CSV (konkurenci przychodowi i wzorniczo-projektowi).
+3. Oblicza **bazowy wynik trafności (0–10)** dla każdego słowa kluczowego z plików CSV:
+   - Wzór: zlicza, ile ASIN-ów konkurentów zajmuje top 10 dla danego słowa kluczowego.
+   - Wynik = `(top_10_count / total_asins) × 20`, ograniczony do 10.
+4. Stosuje korektę **trafności dosłownej**: zwiększa wynik dla słów kluczowych, których tokeny są zawarte w tytule produktu.
+5. Stosuje korektę **trafności tytułów konkurentów**: zwiększa wynik, gdy wielu konkurentów używa danego słowa kluczowego w swoich tytułach.
+6. Stosuje **dynamiczny próg trafności** (3–9 w zależności od rozmiaru zbioru danych) do filtrowania słabych słów kluczowych przed przetwarzaniem przez AI.
+7. Wysyła zescrapowane dane + uproszczony kontekst CSV do modelu AI `ResearchAgent` w celu ustrukturyzowanej analizy.
 
-**Output schema (`ResearchOutput`):**
-- `content_sources` – extraction quality of Title, Images, A+ Content, Reviews, Q&A
-- `market_position` – budget/premium tier with price and unit data
-- `main_keyword` – chosen main keyword with candidates and rationale
-- `current_listing` – existing title, bullet points, backend keywords
+**Schemat wyjściowy (`ResearchOutput`):**
+- `content_sources` – jakość ekstrakcji tytułu, zdjęć, treści A+, recenzji, sekcji Q&A
+- `market_position` – poziom cenowy (budżetowy/premium) wraz z ceną i danymi jednostkowymi
+- `main_keyword` – wybrane główne słowo kluczowe z kandydatami i uzasadnieniem
+- `current_listing` – istniejący tytuł, punktory, słowa kluczowe backendu
 
-**Also returns (for downstream agents):**
-- `scraped_product` – full structured scraped data
-- `base_relevancy_scores` – keyword → score (0–10), filtered by dynamic threshold
-- `full_base_relevancy_scores` – complete unfiltered scores
-- `adjusted_relevancy_scores` – scores after literal and competitor adjustments
-- `keyword_root_analysis` / `priority_roots` – root extraction results
-- `ai_keyword_root_analysis` – AI-powered root analysis (via `RootExtractionAgent` subagent)
-- `competitor_scrapes` – scraped competitor data (price, rating, review count)
+**Zwraca również (dla kolejnych agentów):**
+- `scraped_product` – pełne ustrukturyzowane dane zescrapowane
+- `base_relevancy_scores` – słowo kluczowe → wynik (0–10), filtrowany dynamicznym progiem
+- `full_base_relevancy_scores` – pełne wyniki bez filtrowania
+- `adjusted_relevancy_scores` – wyniki po korektach dosłownych i konkurencyjnych
+- `keyword_root_analysis` / `priority_roots` – wyniki ekstrakcji rdzeni słów kluczowych
+- `ai_keyword_root_analysis` – analiza rdzeni wspierana przez AI (subagent `RootExtractionAgent`)
+- `competitor_scrapes` – zescrapowane dane konkurentów (cena, ocena, liczba recenzji)
 
 **Runner:** `backend/app/local_agents/research/runner.py` → `ResearchRunner.run_research()`
 
 ---
 
-### Agent 2 – Keyword Categorization Agent
+### Agent 2 – Agent kategoryzacji słów kluczowych (Keyword Agent)
 
-**File:** `backend/app/local_agents/keyword/`
+**Plik:** `backend/app/local_agents/keyword/`
 
-**Purpose:** Classifies every keyword into exactly one of six categories.
+**Cel:** Klasyfikuje każde słowo kluczowe do dokładnie jednej z sześciu kategorii.
 
-**Six keyword categories:**
+**Sześć kategorii słów kluczowych:**
 
-| Category | Description |
+| Kategoria | Opis |
 |---|---|
-| `Relevant` | Core keywords directly describing the product in its base form |
-| `Design-Specific` | Keywords describing attributes/variations (material, size, color, packaging) of the same product form |
-| `Irrelevant` | Keywords describing a different product form or with no connection |
-| `Branded` | Keywords containing any brand name (own brand or competitors) |
-| `Spanish` | Keywords in Spanish or other non-English languages |
-| `Outlier` | Extremely broad, high-volume generic terms showing wide product variety |
+| `Relevant` | Podstawowe słowa kluczowe bezpośrednio opisujące produkt w jego bazowej formie |
+| `Design-Specific` | Słowa kluczowe opisujące atrybuty/warianty (materiał, rozmiar, kolor, opakowanie) tej samej formy produktu |
+| `Irrelevant` | Słowa kluczowe opisujące inną formę produktu lub niemające związku z produktem |
+| `Branded` | Słowa kluczowe zawierające jakąkolwiek nazwę marki (własnej lub konkurencji) |
+| `Spanish` | Słowa kluczowe w języku hiszpańskim lub innym nieangielskim |
+| `Outlier` | Skrajnie ogólne terminy o dużym wolumenie wyszukiwań, obejmujące szeroki wachlarz produktów |
 
-**How it works:**
-1. Extracts product context: title, brand, base product form (slices/powder/whole/liquid/capsules/etc.) from the scraped product.
-2. Filters out zero-relevancy keywords.
-3. Splits keywords into **batches of 75** to prevent JSON truncation.
-4. For each batch, builds a prompt with full product context, brand detection rules, and base relevancy scores.
-5. Calls `KeywordAgent` (AI model) which applies a sequential categorization algorithm: Brand → Language → Product Form → Contextual Connection → Outlier → Attributes → Final.
-6. Merges batch results and normalizes field names.
+**Jak działa:**
+1. Wyodrębnia kontekst produktu: tytuł, markę, bazową formę produktu (plastry/proszek/całe/płyn/kapsułki itp.) ze zescrapowanego produktu.
+2. Filtruje słowa kluczowe o zerowej trafności.
+3. Dzieli słowa kluczowe na **partie po 75** w celu zapobiegania obcięciu JSON.
+4. Dla każdej partii buduje prompt z pełnym kontekstem produktu, regułami wykrywania marek i bazowymi wynikami trafności.
+5. Wywołuje `KeywordAgent` (model AI), który stosuje sekwencyjny algorytm kategoryzacji: Marka → Język → Forma produktu → Powiązanie kontekstualne → Outlier → Atrybuty → Wynik końcowy.
+6. Łączy wyniki partii i normalizuje nazwy pól.
 
-**Output:** `KeywordAnalysisResult` with:
-- `items[]` – each keyword with `phrase`, `category`, `relevancy_score`
-- `stats` – per-category counts and examples
-- `product_context` – extracted product metadata
+**Wynik:** `KeywordAnalysisResult` zawierający:
+- `items[]` – każde słowo kluczowe z polami `phrase`, `category`, `relevancy_score`
+- `stats` – liczby i przykłady dla każdej kategorii
+- `product_context` – wyodrębnione metadane produktu
 
 **Runner:** `backend/app/local_agents/keyword/runner.py` → `KeywordRunner.run_keyword_categorization()`
 
 ---
 
-### Agent 3 – Scoring Agent (with Sub-Agents)
+### Agent 3 – Agent scoringu (z subagentami)
 
-**File:** `backend/app/local_agents/scoring/`
+**Plik:** `backend/app/local_agents/scoring/`
 
-**Purpose:** Enriches categorized keywords with metrics, intent scores, broad volume data, variant analysis, and opportunity flags.
+**Cel:** Wzbogaca skategoryzowane słowa kluczowe o metryki, oceny intencji, dane o szerokim wolumenie, analizę wariantów i flagi okazji.
 
-**Sub-agents and components:**
+**Subagenty i komponenty:**
 
 #### IntentScoringSubagent
-**File:** `backend/app/local_agents/scoring/subagents/intent_agent.py`
+**Plik:** `backend/app/local_agents/scoring/subagents/intent_agent.py`
 
-Scores buyer intent for each keyword on a **0–3 scale**:
-- `0` – Irrelevant
-- `1` – One relevant aspect
-- `2` – Two relevant aspects  
-- `3` – Three relevant aspects (strong transactional intent)
+Ocenia intencję zakupową dla każdego słowa kluczowego w **skali 0–3**:
+- `0` – Nieistotne
+- `1` – Jeden istotny aspekt
+- `2` – Dwa istotne aspekty
+- `3` – Trzy istotne aspekty (silna intencja transakcyjna)
 
-Uses `gpt-5-mini-2025-08-07` with the scraped product + base relevancy scores as context.
+Używa modelu `gpt-5-mini-2025-08-07` z zescrapowanym produktem i bazowymi wynikami trafności jako kontekstem.
 
-#### MetricsSubagent (deterministic)
-**File:** `backend/app/local_agents/scoring/subagents/metrics_agent.py`
+#### MetricsSubagent (deterministyczny)
+**Plik:** `backend/app/local_agents/scoring/subagents/metrics_agent.py`
 
-Extracts Helium 10 metrics **directly from the uploaded CSVs** without AI — deterministic lookup by keyword phrase:
-- `search_volume` – from "Search Volume" column
-- `title_density` – from "Title Density" column  
-- `cpr` – from "CPR" column
+Wyodrębnia metryki Helium 10 **bezpośrednio z przesłanych plików CSV** bez AI — deterministyczne wyszukiwanie po frazie kluczowej:
+- `search_volume` – z kolumny „Search Volume" (wolumen wyszukiwań)
+- `title_density` – z kolumny „Title Density" (gęstość w tytułach)
+- `cpr` – z kolumny „CPR"
 - `competition` – Competing Products, Ranking Competitors, Competitor Rank, Competitor Performance Score
 
 #### BroadVolumeAgent
-**File:** `backend/app/local_agents/scoring/subagents/broad_volume_agent.py`
+**Plik:** `backend/app/local_agents/scoring/subagents/broad_volume_agent.py`
 
-Computes **aggregate search volume per keyword root**:
-- Identifies the root token for each keyword (main noun, excluding stopwords/brands).
-- Sums search volume across all keywords sharing that root.
-- Only counts `Relevant` and `Design-Specific` keywords in the sum.
-- Returns `broad_search_volume_by_root` map.
+Oblicza **zagregowany wolumen wyszukiwań dla każdego rdzenia słowa kluczowego**:
+- Identyfikuje token rdzeniowy dla każdego słowa kluczowego (główny rzeczownik, z pominięciem stopwords i marek).
+- Sumuje wolumen wyszukiwań dla wszystkich słów kluczowych o tym samym rdzeniu.
+- Uwzględnia tylko słowa kluczowe z kategorii `Relevant` i `Design-Specific`.
+- Zwraca mapę `broad_search_volume_by_root`.
 
-#### KeywordVariantAgent  
-**File:** `backend/app/local_agents/scoring/subagents/keyword_variant_agent.py`
+#### KeywordVariantAgent
+**Plik:** `backend/app/local_agents/scoring/subagents/keyword_variant_agent.py`
 
-Handles **singular/plural and article variants** (e.g., "strawberry freeze dried" vs "strawberries freeze dried" vs "the strawberry freeze dried"):
-- Detects variant groups using AI.
-- Selects the optimal variant based on search volume and grammatical structure.
-- Returns `variant_groups` and `optimized_keywords` with deduplication.
+Obsługuje **warianty liczby pojedynczej/mnogiej i rodzajniki** (np. „strawberry freeze dried" vs „strawberries freeze dried" vs „the strawberry freeze dried"):
+- Wykrywa grupy wariantów za pomocą AI.
+- Wybiera optymalny wariant na podstawie wolumenu wyszukiwań i struktury gramatycznej.
+- Zwraca `variant_groups` i `optimized_keywords` z deduplikacją.
 
 #### RootRelevanceAgent
-**File:** `backend/app/local_agents/scoring/subagents/root_relevance_agent.py`
+**Plik:** `backend/app/local_agents/scoring/subagents/root_relevance_agent.py`
 
-Filters which **keyword roots** should be included in broad volume calculations by assessing AI-driven relevance. Replaces programmatic filtering with intelligent root relevance assessment.
+Filtruje, które **rdzenie słów kluczowych** powinny być uwzględnione w obliczeniach szerokiego wolumenu, oceniając ich trafność za pomocą AI. Zastępuje programistyczne filtrowanie inteligentną oceną trafności rdzeni.
 
 #### OpportunitySubagent
-**File:** `backend/app/local_agents/scoring/subagents/opportunity_agent.py`
+**Plik:** `backend/app/local_agents/scoring/subagents/opportunity_agent.py`
 
-Applies **zero-title-density opportunity rules**:
-- If `title_density == 0` and keyword is relevant: flag as opportunity.
-- If `title_density` is low and volume is decent: flag as opportunity.
-- Returns `opportunity_decision` and `opportunity_reason` per keyword.
+Stosuje **reguły szans przy zerowej gęstości tytułów**:
+- Jeśli `title_density == 0` i słowo kluczowe jest trafne: oznacza jako szansę.
+- Jeśli `title_density` jest niskie, a wolumen przyzwoity: oznacza jako szansę.
+- Zwraca `opportunity_decision` i `opportunity_reason` dla każdego słowa kluczowego.
 
 **Runner:** `backend/app/local_agents/scoring/runner.py` → `ScoringRunner.run_scoring()`
 
 ---
 
-### Agent 4 – SEO Optimization Agent
+### Agent 4 – Agent optymalizacji SEO
 
-**File:** `backend/app/local_agents/seo/`
+**Plik:** `backend/app/local_agents/seo/`
 
-**Purpose:** Analyzes the current listing's SEO state and generates fully optimized title, bullet points, and backend keywords.
+**Cel:** Analizuje bieżący stan SEO oferty i generuje w pełni zoptymalizowany tytuł, punktory i słowa kluczowe backendu.
 
-**What it does:**
+**Co robi:**
 
-1. **Current SEO Analysis** (deterministic):
-   - Calculates keyword coverage percentage (how many relevant keywords appear in title, bullets, backend).
-   - Measures character efficiency (how well available character space is used).
-   - Identifies root keyword coverage gaps.
-   - Identifies missing high-intent and high-volume keywords.
+1. **Analiza bieżącego SEO** (deterministyczna):
+   - Oblicza procent pokrycia słowami kluczowymi (ile trafnych słów kluczowych pojawia się w tytule, punktorach, backendzie).
+   - Mierzy efektywność znaków (jak dobrze jest wykorzystywana dostępna przestrzeń znaków).
+   - Identyfikuje luki w pokryciu rdzeni słów kluczowych.
+   - Identyfikuje brakujące słowa kluczowe o wysokiej intencji i dużym wolumenie.
 
-2. **Keyword Validator** (`SEOKeywordValidator`):
-   - Prevents AI hallucination — validates that every keyword in the AI output actually exists in the research dataset.
-   - Runs post-generation validation and correction.
+2. **Walidator słów kluczowych** (`SEOKeywordValidator`):
+   - Zapobiega halucynacjom AI — weryfikuje, że każde słowo kluczowe w wyjściu AI rzeczywiście istnieje w zbiorze badawczym.
+   - Przeprowadza walidację i korektę po wygenerowaniu treści.
 
-3. **AI Optimization** (via `SEOOptimizationAgent`):
-   - Generates an optimized **title** (≤200 chars): brand name first, then keywords in descending volume order, includes 2–3 Design-Specific keywords from the highest-volume root.
-   - Generates **5 bullet points**: first 2 use top-5 highest volume keywords, bullets 3–5 use medium-high volume terms.
-   - Generates **backend keywords**: terms not already in title/bullets, includes synonyms, alternate spellings, and misspellings.
+3. **Optymalizacja AI** (przez `SEOOptimizationAgent`):
+   - Generuje zoptymalizowany **tytuł** (≤200 znaków): najpierw nazwa marki, następnie słowa kluczowe w kolejności malejącego wolumenu, zawiera 2–3 słowa kluczowe Design-Specific z rdzenia o najwyższym wolumenie.
+   - Generuje **5 punktorów**: pierwsze 2 używają 5 słów kluczowych o najwyższym wolumenie, punktory 3–5 używają terminów o średnio-wysokim wolumenie.
+   - Generuje **słowa kluczowe backendu**: terminy nieobecne w tytule/punktorach, synonimy, alternatywne pisownie i literówki.
 
-4. **SEO Keyword Filter** (`seo_keyword_filter.py`): Post-processes AI output to validate and correct keyword inclusion.
+4. **Filtr słów kluczowych SEO** (`seo_keyword_filter.py`): Post-przetwarza wyjście AI w celu walidacji i korekty uwzględnionych słów kluczowych.
 
-5. **Amazon Compliance Agent** (`subagents/amazon_compliance_agent.py`): Checks SEO content against Amazon's listing guidelines.
+5. **Agent zgodności z Amazon** (`subagents/amazon_compliance_agent.py`): Sprawdza treści SEO pod kątem wytycznych Amazon dotyczących ofert.
 
-6. **Competitor Title Analysis Agent** (`subagents/competitor_title_analysis_agent.py`): Analyzes patterns in competitor titles to inform optimization strategy.
+6. **Agent analizy tytułów konkurentów** (`subagents/competitor_title_analysis_agent.py`): Analizuje wzorce w tytułach konkurentów w celu wsparcia strategii optymalizacji.
 
-**Output schema (`SEOAnalysisResult`):**
-- `current_seo` – title/bullet/backend analysis with coverage metrics
-- `optimized_seo` – improved title, bullets, backend keywords with keyword lists and character counts
-- `comparison` – before/after metrics: coverage %, intent score, volume capture
-- `improvement_rationale` – explanation of optimization decisions
+**Schemat wyjściowy (`SEOAnalysisResult`):**
+- `current_seo` – analiza tytułu/punktorów/backendu z metrykami pokrycia
+- `optimized_seo` – ulepszony tytuł, punktory, słowa kluczowe backendu z listami słów kluczowych i liczbą znaków
+- `comparison` – metryki przed/po: % pokrycia, wynik intencji, przechwycony wolumen
+- `improvement_rationale` – wyjaśnienie decyzji optymalizacyjnych
 
 **Runner:** `backend/app/local_agents/seo/runner.py` → `SEORunner.run_seo_analysis()`
 
 ---
 
-## Amazon Scraping System
+## System scrapowania Amazon
 
-**Directory:** `backend/app/services/amazon/`
+**Katalog:** `backend/app/services/amazon/`
 
-The system uses multiple scraping strategies with automatic fallback:
+System używa wielu strategii scrapowania z automatycznym przełączaniem awaryjnym:
 
-### Scrapy Scraper
-**File:** `scraper.py`, `search_scraper.py`
+### Scraper Scrapy
+**Plik:** `scraper.py`, `search_scraper.py`
 
-Primary scraper using **Scrapy** framework. Extracts specific HTML element IDs from Amazon product pages:
+Główny scraper oparty na frameworku **Scrapy**. Wyodrębnia konkretne identyfikatory elementów HTML ze stron produktów Amazon:
 
-| Element ID | Content |
+| ID elementu | Zawartość |
 |---|---|
-| `#productTitle` | Product title |
-| `#productOverview_feature_div` | Brand, size, and key-value features |
-| `#feature-bullets` | Bullet point features |
-| `#productDescription` | Product description |
-| `#prodDetails` | Technical specifications |
-| `#detailBullets_feature_div` | Detail bullets |
-| `#aplus` | A+ (Enhanced Brand Content) modules |
+| `#productTitle` | Tytuł produktu |
+| `#productOverview_feature_div` | Marka, rozmiar i cechy w formie klucz-wartość |
+| `#feature-bullets` | Cechy w formie punktorów |
+| `#productDescription` | Opis produktu |
+| `#prodDetails` | Specyfikacje techniczne |
+| `#detailBullets_feature_div` | Szczegółowe punktory |
+| `#aplus` | Moduły A+ (Enhanced Brand Content) |
 
-Also extracts: product images (via `data-a-dynamic-image` JSON, `srcset` attributes), customer reviews, Q&A pairs.
+Wyodrębnia również: zdjęcia produktu (przez atrybut JSON `data-a-dynamic-image` i `srcset`), recenzje klientów, pary pytań i odpowiedzi (Q&A).
 
-### Playwright Scraper
-**File:** `playwright_scraper.py`
+### Scraper Playwright
+**Plik:** `playwright_scraper.py`
 
-Headless-browser scraper using **Playwright** for JavaScript-rendered content. Used as a fallback when Scrapy is blocked or when content requires JavaScript execution.
+Scraper z bezgłową przeglądarką oparty na **Playwright** dla treści renderowanych przez JavaScript. Używany jako fallback, gdy Scrapy jest blokowany lub gdy treść wymaga wykonania JavaScript.
 
-### SERP API Scraper
-**File:** `serp_api_scraper.py`
+### Scraper SERP API
+**Plik:** `serp_api_scraper.py`
 
-Integration with **SerpAPI** (`serpapi.com`) using the `amazon_product` engine. Provides reliable, fast scraping without IP blocking risk. Requires a SerpAPI key (`SERPAPI_API_KEY` env var). Returns normalized product data matching the pipeline's internal format.
+Integracja z **SerpAPI** (`serpapi.com`) przy użyciu silnika `amazon_product`. Zapewnia niezawodne, szybkie scrapowanie bez ryzyka blokady IP. Wymaga klucza SerpAPI (zmienna środowiskowa `SERPAPI_API_KEY`). Zwraca znormalizowane dane produktu zgodne z wewnętrznym formatem potoku.
 
-### Standalone Scrapers
-**Files:** `standalone_scraper.py`, `standalone_search_scraper.py`
+### Lekkie scrapery standalone
+**Pliki:** `standalone_scraper.py`, `standalone_search_scraper.py`
 
-Lightweight scrapers using **requests + BeautifulSoup** and **CloudScraper** for fast, self-contained scraping without the full Scrapy framework overhead.
+Lekkie scrapery używające **requests + BeautifulSoup** oraz **CloudScraper** do szybkiego, samodzielnego scrapowania bez pełnego frameworku Scrapy.
 
-### Multi-Marketplace Support
-**File:** `country_handler.py`
+### Wsparcie dla wielu rynków
+**Plik:** `country_handler.py`
 
-Supports multiple Amazon marketplaces by mapping marketplace codes to base URLs:
+Obsługuje wiele rynków Amazon poprzez mapowanie kodów rynku na bazowe adresy URL:
 
-| Code | Marketplace |
+| Kod | Rynek |
 |---|---|
 | `US` | amazon.com |
 | `UK` / `GB` | amazon.co.uk |
@@ -303,150 +303,150 @@ Supports multiple Amazon marketplaces by mapping marketplace codes to base URLs:
 
 ---
 
-## Anti-Blocking System
+## System anty-blokujący
 
-**Directory:** `backend/app/services/amazon/anti_blocking/`
+**Katalog:** `backend/app/services/amazon/anti_blocking/`
 
-A comprehensive anti-detection system to avoid Amazon's bot-blocking measures.
+Kompleksowy system anty-detekcyjny zapobiegający blokowaniu przez Amazon.
 
-### User Agent Rotation
-**File:** `user_agents.py`
+### Rotacja User-Agent
+**Plik:** `user_agents.py`
 
-Maintains a pool of real browser user-agent strings (Chrome, Firefox, Safari on Windows, Mac, Linux) and randomly selects one per request.
+Utrzymuje pulę prawdziwych ciągów user-agent przeglądarek (Chrome, Firefox, Safari na Windows, Mac, Linux) i losowo wybiera jeden na każde żądanie.
 
-### Header Randomization
-**File:** `headers.py`
+### Randomizacja nagłówków
+**Plik:** `headers.py`
 
-Generates realistic HTTP request headers per request:
-- `Accept-Language` rotation (US English variants)
-- `Accept-Encoding` combinations
-- `Cache-Control` variations
-- Amazon session-specific headers (`x-requested-with`, `x-amzn-RequestId`)
-- `Referer` and `Origin` headers
+Generuje realistyczne nagłówki HTTP żądania dla każdego zapytania:
+- Rotacja `Accept-Language` (warianty języka angielskiego USA)
+- Kombinacje `Accept-Encoding`
+- Warianty `Cache-Control`
+- Nagłówki specyficzne dla sesji Amazon (`x-requested-with`, `x-amzn-RequestId`)
+- Nagłówki `Referer` i `Origin`
 
-### Proxy Rotation
-**File:** `proxy_manager.py`
+### Rotacja proxy
+**Plik:** `proxy_manager.py`
 
-Supports multiple proxy providers configured via environment variables:
-- Direct proxy list (`SCRAPER_PROXY`, `SCRAPER_PROXY_LIST`)
+Obsługuje wielu dostawców proxy konfigurowanych przez zmienne środowiskowe:
+- Bezpośrednia lista proxy (`SCRAPER_PROXY`, `SCRAPER_PROXY_LIST`)
 - **Bright Data** (Luminati): `BRIGHT_DATA_HOST`, `BRIGHT_DATA_USER`, `BRIGHT_DATA_PASS`
 - **Smartproxy**: `SMARTPROXY_HOST`, `SMARTPROXY_USER`, `SMARTPROXY_PASS`
 - **Oxylabs**: `OXYLABS_HOST`, `OXYLABS_USER`, `OXYLABS_PASS`
 
-Rotates proxies every 30 seconds by default.
+Domyślnie rotuje proxy co 30 sekund.
 
-### Scrapy Middlewares
-**File:** `middlewares.py`
+### Middleware Scrapy
+**Plik:** `middlewares.py`
 
-Custom Scrapy downloader middlewares:
-- `RotateUserAgentMiddleware` – rotates user agent on every request
-- `RotateHeadersMiddleware` – generates fresh realistic headers per request
-- `ProxyRotationMiddleware` – injects rotating proxy configuration
-- `CustomRetryMiddleware` – retries on 503/429 with exponential backoff, marks proxies as failed
+Niestandardowe middleware pobierania Scrapy:
+- `RotateUserAgentMiddleware` – rotuje user-agent przy każdym żądaniu
+- `RotateHeadersMiddleware` – generuje świeże, realistyczne nagłówki dla każdego żądania
+- `ProxyRotationMiddleware` – wstrzykuje rotującą konfigurację proxy
+- `CustomRetryMiddleware` – ponawia próby przy kodach 503/429 z wykładniczym cofaniem, oznacza proxy jako nieprawidłowe
 
-### CloudScraper Integration
-**File:** `anti_blocking.py`
+### Integracja CloudScraper
+**Plik:** `anti_blocking.py`
 
-Uses the **CloudScraper** library to bypass Cloudflare and JavaScript challenge pages. Falls back to standard requests when CloudScraper is unavailable.
-
----
-
-## Keyword Processing Utilities
-
-**Directory:** `backend/app/services/keyword_processing/`
-
-### Root Extraction
-**File:** `root_extraction.py`
-
-Deterministic root extraction for keywords:
-- Identifies priority root terms (most meaningful nouns) for a keyword list.
-- Used for grouping keywords and computing broad search volume.
-- `get_priority_roots_for_search()` returns top roots ranked by aggregate search volume.
-
-### Batch Processor
-**File:** `batch_processor.py`
-
-`optimize_keyword_processing_for_agents()` combines root extraction across both revenue and design CSV keyword lists, deduplicates, and returns an optimized analysis for AI agent consumption.
-
-### Intent Sorting
-**File:** `sort.py`, `intent.py`
-
-Sorts keywords by intent score and relevancy score for prioritized analysis.
-
-### AI Root Extraction Subagent
-**File:** `backend/app/local_agents/keyword/subagents/root_extraction_agent.py`
-
-AI-powered extraction of root terms using the OpenAI Agents SDK. Provides richer root analysis than the deterministic approach by understanding product context.
-
-### AI Intent Classification Subagent
-**File:** `backend/app/local_agents/keyword/subagents/intent_classification_agent.py`
-
-AI subagent for classifying keyword intent using product context and base relevancy scores.
-
-### Keyword Deduplication (in ResearchRunner)
-
-Before AI agents process keywords, the pipeline:
-1. Merges keywords from both revenue and design CSVs.
-2. Removes exact duplicates (case-insensitive).
-3. When a keyword appears in both CSVs, keeps the **highest relevancy score** across all sources.
-4. Applies a dynamic relevancy threshold filter before sending to AI agents.
+Używa biblioteki **CloudScraper** do omijania stron Cloudflare i wyzwań JavaScript. Przełącza się na standardowe requests, gdy CloudScraper jest niedostępny.
 
 ---
 
-## Job Management System
+## Narzędzia do przetwarzania słów kluczowych
 
-**File:** `backend/app/services/job_manager.py`
+**Katalog:** `backend/app/services/keyword_processing/`
 
-For long-running analyses (processing thousands of keywords can take minutes), the system provides an **asynchronous background job** system.
+### Ekstrakcja rdzeni (Root Extraction)
+**Plik:** `root_extraction.py`
 
-### Storage Backends (automatic selection):
-1. **Redis (Upstash)** – primary storage for production deployments
-   - Configures via `UPSTASH_REDIS_URL` and `UPSTASH_REDIS_TOKEN`
-   - Jobs expire after `JOB_TTL_HOURS` (default: 24 hours)
-2. **File system** – fallback for local development (stored in `jobs/` directory)
+Deterministyczna ekstrakcja rdzeni słów kluczowych:
+- Identyfikuje priorytetowe terminy rdzeniowe (najbardziej znaczące rzeczowniki) dla listy słów kluczowych.
+- Używana do grupowania słów kluczowych i obliczania szerokiego wolumenu wyszukiwań.
+- `get_priority_roots_for_search()` zwraca czołowe rdzenie uszeregowane według zagregowanego wolumenu wyszukiwań.
 
-### Job Lifecycle:
-1. `JobManager.create_job()` → returns unique UUID job ID
-2. Status: `pending` → `processing` (with progress 0–100%) → `complete` / `failed`
-3. `JobManager.update_status()` – updates progress and message during processing
-4. `JobManager.save_results()` – stores full pipeline output
-5. `JobManager.get_results()` – retrieves stored results by job ID
+### Procesor wsadowy (Batch Processor)
+**Plik:** `batch_processor.py`
 
-### OpenAI Rate Limiter
-**File:** `backend/app/services/openai_rate_limiter.py`
+`optimize_keyword_processing_for_agents()` łączy ekstrakcję rdzeni z obu list słów kluczowych (CSV przychodowy i wzorniczy), deduplikuje je i zwraca zoptymalizowaną analizę do spożycia przez agenty AI.
 
-Token bucket rate limiter for OpenAI API calls:
-- `OPENAI_REQUESTS_PER_MINUTE` (default: 15)
-- `OPENAI_REQUESTS_PER_SECOND` (default: 2)
-- Exponential backoff with `OPENAI_MAX_RETRIES` (default: 3)
+### Sortowanie według intencji
+**Plik:** `sort.py`, `intent.py`
 
-### OpenAI Usage Monitor
-**File:** `backend/app/services/openai_monitor.py`
+Sortuje słowa kluczowe według oceny intencji i wyniku trafności dla priorytetowej analizy.
 
-Tracks token usage, request counts, and estimated costs per pipeline run. Logs detailed stats when `ENABLE_OPENAI_MONITORING=true` and `LOG_DETAILED_STATS=true`.
+### Subagent ekstrakcji rdzeni AI
+**Plik:** `backend/app/local_agents/keyword/subagents/root_extraction_agent.py`
+
+Ekstrakcja terminów rdzeniowych wspierana przez AI przy użyciu OpenAI Agents SDK. Zapewnia bogatszą analizę rdzeni niż podejście deterministyczne dzięki rozumieniu kontekstu produktu.
+
+### Subagent klasyfikacji intencji AI
+**Plik:** `backend/app/local_agents/keyword/subagents/intent_classification_agent.py`
+
+Subagent AI do klasyfikowania intencji słów kluczowych przy użyciu kontekstu produktu i bazowych wyników trafności.
+
+### Deduplikacja słów kluczowych (w ResearchRunner)
+
+Zanim agenty AI przetworzą słowa kluczowe, potok:
+1. Scala słowa kluczowe z obu plików CSV (przychodowego i wzorniczego).
+2. Usuwa dokładne duplikaty (bez rozróżnienia wielkości liter).
+3. Gdy słowo kluczowe pojawia się w obu plikach CSV, zachowuje **najwyższy wynik trafności** ze wszystkich źródeł.
+4. Stosuje dynamiczny filtr progu trafności przed wysłaniem do agentów AI.
 
 ---
 
-## API Endpoints
+## System zarządzania zadaniami (Job Manager)
 
-**Base URL:** `/api/v1`
+**Plik:** `backend/app/services/job_manager.py`
 
-### `POST /amazon-sales-intelligence` (Synchronous)
-Runs the complete 4-agent pipeline. Accepts `multipart/form-data`:
+Dla długotrwałych analiz (przetwarzanie tysięcy słów kluczowych może trwać minuty) system udostępnia **asynchroniczny system zadań w tle**.
 
-| Field | Type | Required | Description |
+### Backendy przechowywania danych (wybór automatyczny):
+1. **Redis (Upstash)** – podstawowe przechowywanie dla wdrożeń produkcyjnych
+   - Konfiguracja przez `UPSTASH_REDIS_URL` i `UPSTASH_REDIS_TOKEN`
+   - Zadania wygasają po `JOB_TTL_HOURS` (domyślnie: 24 godziny)
+2. **System plików** – fallback dla lokalnego środowiska deweloperskiego (przechowywane w katalogu `jobs/`)
+
+### Cykl życia zadania:
+1. `JobManager.create_job()` → zwraca unikalny identyfikator UUID zadania
+2. Status: `pending` (oczekujące) → `processing` (przetwarzanie, postęp 0–100%) → `complete` (zakończone) / `failed` (nieudane)
+3. `JobManager.update_status()` – aktualizuje postęp i komunikat podczas przetwarzania
+4. `JobManager.save_results()` – zapisuje pełne wyjście potoku
+5. `JobManager.get_results()` – pobiera zapisane wyniki według identyfikatora zadania
+
+### Ogranicznik szybkości OpenAI
+**Plik:** `backend/app/services/openai_rate_limiter.py`
+
+Ogranicznik szybkości metodą token bucket dla wywołań OpenAI API:
+- `OPENAI_REQUESTS_PER_MINUTE` (domyślnie: 15)
+- `OPENAI_REQUESTS_PER_SECOND` (domyślnie: 2)
+- Wykładnicze cofanie z `OPENAI_MAX_RETRIES` (domyślnie: 3)
+
+### Monitor użycia OpenAI
+**Plik:** `backend/app/services/openai_monitor.py`
+
+Śledzi użycie tokenów, liczby żądań i szacowane koszty na uruchomienie potoku. Rejestruje szczegółowe statystyki, gdy `ENABLE_OPENAI_MONITORING=true` i `LOG_DETAILED_STATS=true`.
+
+---
+
+## Endpointy API
+
+**Bazowy URL:** `/api/v1`
+
+### `POST /amazon-sales-intelligence` (synchroniczny)
+Uruchamia kompletny potok 4 agentów. Przyjmuje `multipart/form-data`:
+
+| Pole | Typ | Wymagane | Opis |
 |---|---|---|---|
-| `asin_or_url` | string | ✅ | Amazon ASIN or full product URL |
-| `marketplace` | string | default: `US` | Marketplace code |
-| `main_keyword` | string | optional | Override for auto-detected main keyword |
-| `revenue_csv` | file | optional | Helium 10 Cerebro export (top revenue competitors) |
-| `design_csv` | file | optional | Helium 10 Cerebro export (top design competitors) |
+| `asin_or_url` | string | ✅ | ASIN Amazon lub pełny URL produktu |
+| `marketplace` | string | domyślnie: `US` | Kod rynku |
+| `main_keyword` | string | opcjonalne | Nadpisanie automatycznie wykrytego głównego słowa kluczowego |
+| `revenue_csv` | plik | opcjonalne | Eksport Helium 10 Cerebro (czołowi konkurenci przychodowi) |
+| `design_csv` | plik | opcjonalne | Eksport Helium 10 Cerebro (czołowi konkurenci wzorniczo-projektowi) |
 
-### `POST /start-analysis` (Asynchronous – recommended for production)
-Same parameters as above. Returns immediately with a `job_id`. Use status polling to track progress.
+### `POST /start-analysis` (asynchroniczny – zalecany dla produkcji)
+Te same parametry co powyżej. Zwraca natychmiast `job_id`. Użyj odpytywania statusu do śledzenia postępu.
 
 ### `GET /job-status/{job_id}`
-Poll for job progress. Returns:
+Odpytywanie postępu zadania. Zwraca:
 ```json
 {
   "status": "processing",
@@ -456,193 +456,193 @@ Poll for job progress. Returns:
 }
 ```
 
-When `status == "complete"`, `result` contains the full pipeline output.
+Gdy `status == "complete"`, pole `result` zawiera pełne wyjście potoku.
 
 ### `POST /upload/csv`
-Standalone CSV upload and parsing endpoint. Returns parsed row data as JSON.
+Samodzielny endpoint przesyłania i parsowania pliku CSV. Zwraca sparsowane dane wierszy jako JSON.
 
 ### `GET /`
-Health check — returns `{"message": "Welcome to the Amazon Sales Agent API"}`.
+Sprawdzenie stanu serwisu — zwraca `{"message": "Welcome to the Amazon Sales Agent API"}`.
 
 ---
 
-## Frontend Application
+## Aplikacja frontendowa
 
-**Directory:** `frontend/`
+**Katalog:** `frontend/`
 
-A **Next.js** (React) dashboard application providing a web UI for the platform.
+Aplikacja panelowa **Next.js** (React) zapewniająca interfejs webowy dla platformy.
 
-**Framework:** Next.js with App Router, TypeScript, Tailwind CSS, shadcn/ui components
+**Framework:** Next.js z App Router, TypeScript, Tailwind CSS, komponenty shadcn/ui
 
-**Dashboard pages:**
-- `/dashboard` – Overview with key metrics (total researches, keywords found, avg optimization score, competitors analyzed)
-- `/dashboard/research` – New research form (ASIN/URL input, marketplace selection, keyword, CSV upload)
-- `/dashboard/upload` – File upload for CSV data
-- `/dashboard/results` – Research results display
-- `/dashboard/history` – Past analysis history
-- `/dashboard/reports` – Generated reports
+**Strony panelu:**
+- `/dashboard` – Przegląd z kluczowymi metrykami (łączna liczba badań, znalezione słowa kluczowe, średni wynik optymalizacji, przeanalizowani konkurenci)
+- `/dashboard/research` – Formularz nowego badania (wejście ASIN/URL, wybór rynku, słowo kluczowe, przesyłanie CSV)
+- `/dashboard/upload` – Przesyłanie plików CSV
+- `/dashboard/results` – Wyświetlanie wyników badań
+- `/dashboard/history` – Historia poprzednich analiz
+- `/dashboard/reports` – Wygenerowane raporty
 
-**Frontend–Backend communication:**
-- `lib/api.ts` – Synchronous API client using `fetch`
-- `lib/api-client-background.ts` – Async API client for background job polling
-- `lib/config.ts` – Backend URL configuration (via `NEXT_PUBLIC_API_URL` env var)
+**Komunikacja frontend–backend:**
+- `lib/api.ts` – Synchroniczny klient API używający `fetch`
+- `lib/api-client-background.ts` – Asynchroniczny klient API do odpytywania zadań w tle
+- `lib/config.ts` – Konfiguracja URL backendu (przez zmienną środowiskową `NEXT_PUBLIC_API_URL`)
 
-**Deployed at:** `https://amazon-sales-agent.vercel.app` (Vercel)
+**Wdrożony pod adresem:** `https://amazon-sales-agent.vercel.app` (Vercel)
 
 ---
 
-## External APIs and Services
+## Zewnętrzne API i usługi
 
-| Service | Purpose | Configuration |
+| Usługa | Cel | Konfiguracja |
 |---|---|---|
-| **OpenAI API** | Powers all 4 AI agents and sub-agents | `OPENAI_API_KEY` |
-| **SerpAPI** | Reliable Amazon product scraping | `SERPAPI_API_KEY` |
-| **Upstash Redis** | Background job storage in production | `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN` |
-| **Bright Data** | Residential proxy provider for scraping | `BRIGHT_DATA_HOST/USER/PASS` |
-| **Smartproxy** | Alternative proxy provider | `SMARTPROXY_HOST/USER/PASS` |
-| **Oxylabs** | Alternative proxy provider | `OXYLABS_HOST/USER/PASS` |
+| **OpenAI API** | Zasila wszystkie 4 agenty AI i subagenty | `OPENAI_API_KEY` |
+| **SerpAPI** | Niezawodne scrapowanie produktów Amazon | `SERPAPI_API_KEY` |
+| **Upstash Redis** | Przechowywanie zadań w tle w produkcji | `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN` |
+| **Bright Data** | Dostawca proxy rezydencjalnych do scrapowania | `BRIGHT_DATA_HOST/USER/PASS` |
+| **Smartproxy** | Alternatywny dostawca proxy | `SMARTPROXY_HOST/USER/PASS` |
+| **Oxylabs** | Alternatywny dostawca proxy | `OXYLABS_HOST/USER/PASS` |
 
-**OpenAI Model:** `gpt-5-mini-2025-08-07` (used by all agents)
-**AI Framework:** `openai-agents>=0.2.9` (OpenAI Agents SDK)
+**Model OpenAI:** `gpt-5-mini-2025-08-07` (używany przez wszystkich agentów)
+**Framework AI:** `openai-agents>=0.2.9` (OpenAI Agents SDK)
 
 ---
 
-## Configuration & Environment Variables
+## Konfiguracja i zmienne środowiskowe
 
-All settings are loaded from `.env` file or environment. See `backend/app/core/config.py`.
+Wszystkie ustawienia są ładowane z pliku `.env` lub środowiska. Patrz `backend/app/core/config.py`.
 
-### Required
-| Variable | Description |
+### Wymagane
+| Zmienna | Opis |
 |---|---|
-| `OPENAI_API_KEY` | OpenAI API key for all AI agents |
+| `OPENAI_API_KEY` | Klucz API OpenAI dla wszystkich agentów AI |
 
-### Agent Behavior
-| Variable | Default | Description |
+### Zachowanie agentów
+| Zmienna | Domyślna | Opis |
 |---|---|---|
-| `OPENAI_MODEL` | `gpt-4` | OpenAI model name (each agent overrides this with `gpt-5-mini-2025-08-07` directly in code; this env var is not used by agents) |
-| `USE_AI_AGENTS` | `true` | Enable/disable AI agents |
-| `FALLBACK_TO_DIRECT` | `true` | Fall back to direct processing if agents fail |
+| `OPENAI_MODEL` | `gpt-4` | Nazwa modelu OpenAI (każdy agent nadpisuje tę wartość kodem używającym `gpt-5-mini-2025-08-07`; ta zmienna środowiskowa nie jest używana przez agentów) |
+| `USE_AI_AGENTS` | `true` | Włącz/wyłącz agenty AI |
+| `FALLBACK_TO_DIRECT` | `true` | Przełącz na przetwarzanie bezpośrednie, jeśli agenty zawiodą |
 
-### Rate Limiting
-| Variable | Default | Description |
+### Ograniczanie szybkości
+| Zmienna | Domyślna | Opis |
 |---|---|---|
-| `OPENAI_REQUESTS_PER_MINUTE` | `15` | OpenAI rate limit |
-| `OPENAI_REQUESTS_PER_SECOND` | `2` | OpenAI burst limit |
-| `OPENAI_MAX_RETRIES` | `3` | Max retries on rate limit errors |
-| `OPENAI_BASE_RETRY_DELAY` | `1.0` | Base delay (seconds) for exponential backoff |
+| `OPENAI_REQUESTS_PER_MINUTE` | `15` | Limit żądań OpenAI na minutę |
+| `OPENAI_REQUESTS_PER_SECOND` | `2` | Limit chwilowy żądań OpenAI na sekundę |
+| `OPENAI_MAX_RETRIES` | `3` | Maksymalna liczba ponownych prób przy błędach limitu |
+| `OPENAI_BASE_RETRY_DELAY` | `1.0` | Bazowe opóźnienie (sekundy) dla wykładniczego cofania |
 
-### Batch Processing
-| Variable | Default | Description |
+### Przetwarzanie wsadowe
+| Zmienna | Domyślna | Opis |
 |---|---|---|
-| `BATCH_SIZE` | `25` | Keywords per processing batch |
-| `MAX_CONCURRENT_BATCHES` | `3` | Concurrent batch limit |
-| `BATCH_TIMEOUT` | `120` | Seconds per batch |
-| `KEYWORD_BATCH_SIZE` | `500` | Keywords per root extraction batch |
+| `BATCH_SIZE` | `25` | Słowa kluczowe na partię przetwarzania |
+| `MAX_CONCURRENT_BATCHES` | `3` | Limit równoczesnych partii |
+| `BATCH_TIMEOUT` | `120` | Sekundy na partię |
+| `KEYWORD_BATCH_SIZE` | `500` | Słowa kluczowe na partię ekstrakcji rdzeni |
 
-### Storage
-| Variable | Default | Description |
+### Przechowywanie danych
+| Zmienna | Domyślna | Opis |
 |---|---|---|
-| `UPSTASH_REDIS_URL` | — | Upstash Redis REST URL |
-| `UPSTASH_REDIS_TOKEN` | — | Upstash Redis auth token |
-| `USE_REDIS_FOR_JOBS` | `true` | Use Redis for job storage |
-| `JOB_TTL_HOURS` | `24` | Hours before job data expires |
+| `UPSTASH_REDIS_URL` | — | URL REST Upstash Redis |
+| `UPSTASH_REDIS_TOKEN` | — | Token uwierzytelniający Upstash Redis |
+| `USE_REDIS_FOR_JOBS` | `true` | Użyj Redis do przechowywania zadań |
+| `JOB_TTL_HOURS` | `24` | Godziny do wygaśnięcia danych zadania |
 
-### Scraping
-| Variable | Default | Description |
+### Scrapowanie
+| Zmienna | Domyślna | Opis |
 |---|---|---|
-| `SCRAPER_PROXY` | — | Single proxy URL |
-| `SCRAPER_PROXY_LIST` | — | Comma-separated proxy list |
-| `BRIGHT_DATA_HOST/USER/PASS` | — | Bright Data proxy credentials |
-| `SMARTPROXY_HOST/USER/PASS` | — | Smartproxy credentials |
-| `OXYLABS_HOST/USER/PASS` | — | Oxylabs credentials |
-| `SERPAPI_API_KEY` | — | SerpAPI key for SERP API scraper |
+| `SCRAPER_PROXY` | — | Pojedynczy URL proxy |
+| `SCRAPER_PROXY_LIST` | — | Lista proxy oddzielona przecinkami |
+| `BRIGHT_DATA_HOST/USER/PASS` | — | Dane uwierzytelniające proxy Bright Data |
+| `SMARTPROXY_HOST/USER/PASS` | — | Dane uwierzytelniające Smartproxy |
+| `OXYLABS_HOST/USER/PASS` | — | Dane uwierzytelniające Oxylabs |
+| `SERPAPI_API_KEY` | — | Klucz SerpAPI dla scrapera SERP API |
 
 ### CORS
-| Variable | Default | Description |
+| Zmienna | Domyślna | Opis |
 |---|---|---|
-| `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed origins |
+| `CORS_ORIGINS` | `http://localhost:3000,...` | Dozwolone źródła oddzielone przecinkami |
 
 ---
 
-## Technology Stack
+## Stos technologiczny
 
 ### Backend
-| Technology | Version | Role |
+| Technologia | Wersja | Rola |
 |---|---|---|
-| Python | ≥3.13 | Runtime |
-| FastAPI | ≥0.116.1 | Web framework + REST API |
-| OpenAI Agents SDK | ≥0.2.9 | AI agent framework |
-| Scrapy | ≥2.13.3 | Amazon web scraping |
-| Playwright | ≥1.40.0 | Headless browser scraping |
-| BeautifulSoup4 | ≥4.12.0 | HTML parsing |
-| CloudScraper | ≥1.2.71 | Cloudflare bypass |
-| Upstash Redis | ≥0.15.0 | Background job storage |
-| Pydantic | (via FastAPI) | Data validation and schemas |
-| uvicorn | (via FastAPI) | ASGI server |
-| uv | — | Package manager |
-| pytest | ≥8.4.1 | Testing |
+| Python | ≥3.13 | Środowisko uruchomieniowe |
+| FastAPI | ≥0.116.1 | Framework webowy + REST API |
+| OpenAI Agents SDK | ≥0.2.9 | Framework agentów AI |
+| Scrapy | ≥2.13.3 | Scrapowanie Amazon |
+| Playwright | ≥1.40.0 | Scrapowanie z bezgłową przeglądarką |
+| BeautifulSoup4 | ≥4.12.0 | Parsowanie HTML |
+| CloudScraper | ≥1.2.71 | Omijanie Cloudflare |
+| Upstash Redis | ≥0.15.0 | Przechowywanie zadań w tle |
+| Pydantic | (przez FastAPI) | Walidacja danych i schematy |
+| uvicorn | (przez FastAPI) | Serwer ASGI |
+| uv | — | Menedżer pakietów |
+| pytest | ≥8.4.1 | Testowanie |
 
 ### Frontend
-| Technology | Role |
+| Technologia | Rola |
 |---|---|
-| Next.js (App Router) | React framework |
-| TypeScript | Type-safe JavaScript |
-| Tailwind CSS | Utility-first CSS |
-| shadcn/ui | UI component library |
-| Lucide React | Icons |
+| Next.js (App Router) | Framework React |
+| TypeScript | JavaScript z typowaniem statycznym |
+| Tailwind CSS | Framework CSS oparty na klasach użytkowych |
+| shadcn/ui | Biblioteka komponentów UI |
+| Lucide React | Ikony |
 
 ---
 
-## Deployment
+## Wdrożenie
 
 ### Backend – Render
-**File:** `backend/render.yaml`
+**Plik:** `backend/render.yaml`
 
-The backend is configured for deployment on [Render](https://render.com):
-- Start command: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 18000`
-- Dev command: same with `--reload`
-- Long keep-alive timeout (18,000 seconds) to support lengthy pipeline runs.
+Backend jest skonfigurowany do wdrożenia na platformie [Render](https://render.com):
+- Polecenie startowe: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 18000`
+- Polecenie deweloperskie: to samo z flagą `--reload`
+- Długi timeout podtrzymania połączenia (18 000 sekund) do obsługi długotrwałych uruchomień potoku.
 
-Scripts:
-- `backend/scripts/deploy.sh` – deployment helper
-- `backend/scripts/health_check.sh` – endpoint health check
+Skrypty:
+- `backend/scripts/deploy.sh` – pomocnik wdrożeniowy
+- `backend/scripts/health_check.sh` – sprawdzenie stanu endpointu
 
 ### Frontend – Vercel
-The Next.js frontend is deployed to [Vercel](https://vercel.com). Set `NEXT_PUBLIC_API_URL` to the Render backend URL.
+Frontend Next.js jest wdrożony na platformie [Vercel](https://vercel.com). Ustaw `NEXT_PUBLIC_API_URL` na URL backendu Render.
 
-### Local Development
+### Lokalny rozwój
 
 ```bash
-# Backend (requires Python 3.13+)
+# Backend (wymaga Python 3.13+)
 cd backend
 uv sync
-cp .env.example .env   # add OPENAI_API_KEY
+cp .env.example .env   # dodaj OPENAI_API_KEY
 uv run dev
 
 # Frontend
 cd frontend
 npm install
-cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL
+cp .env.local.example .env.local   # ustaw NEXT_PUBLIC_API_URL
 npm run dev
 ```
 
 ---
 
-## Input Data Format (Helium 10 Cerebro CSV)
+## Format danych wejściowych (CSV Helium 10 Cerebro)
 
-The pipeline accepts **Helium 10 Cerebro** keyword research exports. Expected CSV columns:
+Potok przyjmuje eksporty badań słów kluczowych z **Helium 10 Cerebro**. Oczekiwane kolumny CSV:
 
-| Column | Description |
+| Kolumna | Opis |
 |---|---|
-| `Keyword Phrase` | The search keyword |
-| `Search Volume` | Monthly Amazon search volume |
-| `Relevancy` | Helium 10 relevancy score |
-| `Title Density` | How many top results include the keyword in their title |
-| `CPR` | Cerebro Product Rank (estimated giveaways needed to rank) |
-| `Cerebro IQ Score` | Helium 10 opportunity score |
-| `Competing Products` | Number of products competing for the keyword |
-| `B0XXXXXXXXX` (columns) | Organic rank of each ASIN for the keyword |
+| `Keyword Phrase` | Fraza wyszukiwania |
+| `Search Volume` | Miesięczny wolumen wyszukiwań na Amazon |
+| `Relevancy` | Wynik trafności Helium 10 |
+| `Title Density` | Ile czołowych wyników zawiera słowo kluczowe w tytule |
+| `CPR` | Cerebro Product Rank (szacowana liczba rozdań potrzebna do osiągnięcia rankingu) |
+| `Cerebro IQ Score` | Wynik szans Helium 10 |
+| `Competing Products` | Liczba produktów konkurujących o słowo kluczowe |
+| `B0XXXXXXXXX` (kolumny) | Organiczny ranking każdego ASIN dla słowa kluczowego |
 
-Two files are accepted:
-- **Revenue CSV** – keywords from top revenue-generating competitor ASINs
-- **Design CSV** – keywords from top design-variant competitor ASINs
+Przyjmowane są dwa pliki:
+- **Revenue CSV** – słowa kluczowe od konkurentów generujących najwyższe przychody
+- **Design CSV** – słowa kluczowe od konkurentów z najlepszymi wariantami wzorniczo-projektowymi
